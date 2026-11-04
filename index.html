@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Asistencia — Instituto</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --fondo: #f6f7f9;
+    --tarjeta: #ffffff;
+    --texto: #1b1d21;
+    --suave: #6b7280;
+    --borde: #e3e5e9;
+    --ok: #137a4b;
+    --okFondo: #e7f6ee;
+    --mal: #a4252b;
+    --malFondo: #fdecec;
+    --acento: #2f5ca8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #15171a;
+      --tarjeta: #1f2225;
+      --texto: #eceef1;
+      --suave: #9ba1a9;
+      --borde: #32363b;
+      --ok: #6ddba3;
+      --okFondo: #11301f;
+      --mal: #f29da1;
+      --malFondo: #341618;
+      --acento: #8fb4ef;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--fondo);
+    color: var(--texto);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: calc(24px + env(safe-area-inset-top, 0px)) 16px
+             calc(24px + env(safe-area-inset-bottom, 0px));
+    min-height: 100vh;
+  }
+  .caja {
+    background: var(--tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 16px;
+    padding: 28px 22px;
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+    align-self: center;
+  }
+  .icono { font-size: 52px; line-height: 1; margin-bottom: 14px; }
+  h1 { font-size: 21px; margin: 0 0 8px; }
+  p { font-size: 15px; line-height: 1.5; color: var(--suave); margin: 0 0 10px; }
+  .grande { font-size: 25px; font-weight: 700; color: var(--texto); margin: 4px 0 6px; }
+  .estado { border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .estado.bien { background: var(--okFondo); }
+  .estado.bien h1 { color: var(--ok); }
+  .estado.error { background: var(--malFondo); }
+  .estado.error h1 { color: var(--mal); }
+  input {
+    width: 100%; padding: 13px; font-size: 16px; margin-bottom: 10px;
+    border: 1px solid var(--borde); border-radius: 10px;
+    background: var(--fondo); color: var(--texto);
+  }
+  button {
+    width: 100%; padding: 14px; font-size: 16px; font-weight: 600;
+    border: 0; border-radius: 10px; background: var(--acento); color: #fff;
+    cursor: pointer;
+  }
+  button.secundario { background: transparent; color: var(--acento); font-weight: 500; }
+  .pie { font-size: 12px; color: var(--suave); margin-top: 18px; }
+  .oculto { display: none; }
+  .giro { animation: giro 1s linear infinite; display: inline-block; }
+  @keyframes giro { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="caja" id="caja">
+  <div class="icono giro" id="icono">◌</div>
+  <h1 id="titulo">Un momento…</h1>
+  <p id="texto">Conectando con el instituto.</p>
+  <div id="extra"></div>
+</div>
+
+<script>
+/* ===================================================================
+   CONFIGURACIÓN — pega aquí la URL de tu aplicación web de Apps Script
+   Termina en /exec
+   =================================================================== */
+const API = 'https://script.google.com/macros/s/PEGA_AQUI_TU_ID/exec';
+
+const LL_TOKEN  = 'inst_token';
+const LL_NOMBRE = 'inst_nombre';
+const LL_COLA   = 'inst_cola';
+
+const MENSAJES = {
+  persona_no_encontrada:   'Tu credencial no está en la lista. Avisa al encargado.',
+  credencial_revocada:     'Esta credencial fue reemplazada. Pide tu enlace nuevo.',
+  actividad_no_encontrada: 'Este código no está registrado en el sistema.',
+  actividad_inactiva:      'Esta actividad está cerrada por ahora.',
+  fuera_de_horario:        'Todavía no es hora de esta actividad, o ya terminó.',
+  fuera_de_fecha:          'Esta actividad no es hoy.',
+  sistema_ocupado:      'Muchos registros al mismo tiempo. Intenta de nuevo.',
+  datos_incompletos:    'Faltan datos. Vuelve a escanear el código.',
+  nombre_invalido:      'Escribe tu nombre completo.',
+  error_interno:        'Hubo un problema al registrar. Avisa a tu maestro.'
+};
+
+const $ = id => document.getElementById(id);
+
+function pintar(icono, titulo, texto, clase, extraHtml) {
+  $('icono').textContent = icono;
+  $('icono').className = 'icono';
+  $('titulo').textContent = titulo;
+  $('texto').innerHTML = texto || '';
+  $('caja').className = 'caja';
+  if (clase) {
+    $('caja').innerHTML = '<div class="estado ' + clase + '">' +
+      '<div class="icono">' + icono + '</div>' +
+      '<h1>' + titulo + '</h1>' +
+      (texto ? '<p>' + texto + '</p>' : '') +
+      '</div><div id="extra"></div>';
+  }
+  $('extra').innerHTML = extraHtml || '';
+}
+
+async function enviar(cuerpo) {
+  const r = await fetch(API, { method: 'POST', body: JSON.stringify(cuerpo) });
+  return await r.json();
+}
+
+/* ---------- Vinculación del teléfono ---------- */
+async function vincular(token) {
+  try {
+    const r = await enviar({ accion: 'vincular', token: token });
+    if (!r.ok) {
+      pintar('⚠️', 'No se pudo vincular', MENSAJES[r.error] || 'Intenta más tarde.', 'error');
+      return;
+    }
+    localStorage.setItem(LL_TOKEN, token);
+    localStorage.setItem(LL_NOMBRE, r.nombre);
+    pintar('✅', 'Listo, ' + r.nombre,
+      'Este teléfono quedó vinculado a tu registro' + (r.clase ? ' de ' + r.clase : '') +
+      '.<br><br>De ahora en adelante solo escanea el código del salón con tu cámara.',
+      'bien',
+      '<p class="pie">Guarda este enlace. Si cambias de teléfono, vuelve a abrirlo.</p>');
+  } catch (e) {
+    pintar('📡', 'Sin conexión', 'Conéctate al wifi del instituto e intenta otra vez.', 'error');
+  }
+}
+
+/* ---------- Registro de asistencia ---------- */
+async function registrar(lugar) {
+  const token = localStorage.getItem(LL_TOKEN);
+
+  if (!token) {
+    pintar('👋', 'Primero identifícate',
+      'Abre el enlace personal que te mandaron. Solo se hace una vez.', 'error',
+      '<button class="secundario" onclick="formVisitante(\'' + lugar + '\')">Soy visitante</button>');
+    return;
+  }
+
+  try {
+    const r = await enviar({ accion: 'registrar', token: token, lugar: lugar });
+    if (!r.ok) {
+      pintar('⚠️', 'No se registró', MENSAJES[r.error] || 'Intenta de nuevo.', 'error');
+      return;
+    }
+    if (r.duplicado) {
+      pintar('👍', 'Ya estabas registrado',
+        r.lugar + ' · ' + r.hora + '<br>No necesitas escanear otra vez.', 'bien');
+      return;
+    }
+    pintar('✅', '¡Listo, ' + r.nombre + '!',
+      r.lugar + '<br>Registrado a las ' + r.hora, 'bien');
+  } catch (e) {
+    guardarEnCola(lugar);
+    pintar('⏳', 'Sin señal',
+      'Guardamos tu registro y se enviará solo en cuanto tengas internet. ' +
+      'Deja esta página abierta un momento.', 'error');
+  }
+}
+
+/* ---------- Visitantes ---------- */
+function formVisitante(lugar) {
+  $('caja').innerHTML =
+    '<div class="icono">📝</div>' +
+    '<h1>Registro de visitante</h1>' +
+    '<p>Escribe tu nombre completo para que el maestro sepa que viniste.</p>' +
+    '<input id="nom" placeholder="Nombre completo" autocomplete="name">' +
+    '<input id="est" placeholder="Estaca">' +
+    '<input id="bar" placeholder="Barrio o rama">' +
+    '<input id="con" placeholder="Teléfono o correo (opcional)">' +
+    '<button id="btn">Registrarme</button>' +
+    '<div id="extra"></div>';
+
+  $('btn').onclick = async function () {
+    $('btn').disabled = true;
+    $('btn').textContent = 'Enviando…';
+    try {
+      const r = await enviar({
+        accion: 'visitante',
+        lugar: lugar,
+        nombre: $('nom').value,
+        estaca: $('est').value,
+        barrio: $('bar').value,
+        contacto: $('con').value
+      });
+      if (!r.ok) {
+        $('btn').disabled = false;
+        $('btn').textContent = 'Registrarme';
+        $('extra').innerHTML = '<p style="color:var(--mal)">' +
+          (MENSAJES[r.error] || 'No se pudo registrar.') + '</p>';
+        return;
+      }
+      pintar('✅', '¡Bienvenido!', 'Quedaste registrado en ' + r.lugar + '.', 'bien');
+    } catch (e) {
+      $('btn').disabled = false;
+      $('btn').textContent = 'Registrarme';
+      $('extra').innerHTML = '<p style="color:var(--mal)">Sin conexión. Intenta otra vez.</p>';
+    }
+  };
+}
+
+/* ---------- Cola para cuando falla la señal ---------- */
+function guardarEnCola(lugar) {
+  const cola = JSON.parse(localStorage.getItem(LL_COLA) || '[]');
+  cola.push(lugar);
+  localStorage.setItem(LL_COLA, JSON.stringify(cola));
+  setTimeout(vaciarCola, 8000);
+}
+
+async function vaciarCola() {
+  const cola = JSON.parse(localStorage.getItem(LL_COLA) || '[]');
+  const token = localStorage.getItem(LL_TOKEN);
+  if (!cola.length || !token) return;
+
+  const quedan = [];
+  for (const lugar of cola) {
+    try {
+      const r = await enviar({ accion: 'registrar', token: token, lugar: lugar });
+      if (!r.ok && r.error === 'error_interno') quedan.push(lugar);
+    } catch (e) {
+      quedan.push(lugar);
+    }
+  }
+  localStorage.setItem(LL_COLA, JSON.stringify(quedan));
+  if (!quedan.length && document.getElementById('titulo')) {
+    pintar('✅', 'Registro enviado', 'Ya quedó guardada tu asistencia.', 'bien');
+  } else if (quedan.length) {
+    setTimeout(vaciarCola, 15000);
+  }
+}
+
+/* ---------- Arranque ---------- */
+(function () {
+  const p = new URLSearchParams(location.search);
+  const a = p.get('a');
+  const l = p.get('l');
+
+  vaciarCola();
+
+  if (a) { vincular(a); return; }
+  if (l) { registrar(l); return; }
+
+  const nombre = localStorage.getItem(LL_NOMBRE);
+  if (nombre) {
+    pintar('📷', 'Hola, ' + nombre,
+      'Ya estás identificado en este teléfono.<br>' +
+      'Para registrar tu asistencia, escanea el código que está en el salón.', 'bien');
+  } else {
+    pintar('🔗', 'Asistencia del instituto',
+      'Abre el enlace personal que te mandó tu maestro para identificarte, ' +
+      'o escanea el código de tu salón.', 'error');
+  }
+})();
+</script>
+</body>
+</html>
