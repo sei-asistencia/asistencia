@@ -93,7 +93,7 @@
    CONFIGURACIÓN — pega aquí la URL de tu aplicación web de Apps Script
    Termina en /exec
    =================================================================== */
-const API = 'https://script.google.com/macros/s/AKfycbzkBNAD2vxDRlwSkTM3qKfYzRWlmuj39SJNiKr43xkRUn4BJCwKxOIhchuCSh0mlL-X4g/exec';
+const API = 'https://script.google.com/macros/s/AKfycbwMaHWO0l2lSU5b6m-z1b4BpLGd3TP5iBi2c3l5R3dCXooPWYAKVkwREblFeQd-Eqp9xQ/exec';
 
 const LL_TOKEN  = 'inst_token';
 const LL_NOMBRE = 'inst_nombre';
@@ -109,6 +109,9 @@ const MENSAJES = {
   sistema_ocupado:      'Muchos registros al mismo tiempo. Intenta de nuevo.',
   datos_incompletos:    'Faltan datos. Vuelve a escanear el código.',
   nombre_invalido:      'Escribe tu nombre completo.',
+  codigo_invalido:      'Escribe tu código completo, por ejemplo SEI-0001.',
+  apellido_no_coincide: 'Ese apellido no coincide con el código. Revísalo.',
+  sin_credencial:       'Todavía no te han generado credencial. Avisa al encargado.',
   error_interno:        'Hubo un problema al registrar. Avisa a tu maestro.'
 };
 
@@ -161,7 +164,8 @@ async function registrar(lugar) {
 
   if (!token) {
     pintar('👋', 'Primero identifícate',
-      'Abre el enlace personal que te mandaron. Solo se hace una vez.', 'error',
+      'Este navegador todavía no sabe quién eres. Solo se hace una vez.', 'error',
+      '<button onclick="formIdentificar(\'' + lugar + '\')">Tengo mi código</button>' +
       '<button class="secundario" onclick="formVisitante(\'' + lugar + '\')">Soy visitante</button>');
     return;
   }
@@ -185,6 +189,43 @@ async function registrar(lugar) {
       'Guardamos tu registro y se enviará solo en cuanto tengas internet. ' +
       'Deja esta página abierta un momento.', 'error');
   }
+}
+
+/* ---------- Identificación con código personal ---------- */
+function formIdentificar(lugar) {
+  $('caja').innerHTML =
+    '<div class="icono">🔑</div>' +
+    '<h1>Identifícate</h1>' +
+    '<p>Escribe el código que viene en tu credencial. ' +
+    'Este teléfono te va a recordar de aquí en adelante.</p>' +
+    '<input id="cod" placeholder="SEI-0001-K4M2P" autocapitalize="characters">' +
+    '<button id="btn">Continuar</button>' +
+    '<div id="extra"></div>';
+
+  $('btn').onclick = async function () {
+    $('btn').disabled = true;
+    $('btn').textContent = 'Verificando…';
+    try {
+      const r = await enviar({
+        accion: 'identificar',
+        codigo: $('cod').value
+      });
+      if (!r.ok) {
+        $('btn').disabled = false;
+        $('btn').textContent = 'Continuar';
+        $('extra').innerHTML = '<p style="color:var(--mal)">' +
+          (MENSAJES[r.error] || 'No se pudo identificar.') + '</p>';
+        return;
+      }
+      localStorage.setItem(LL_TOKEN, r.token);
+      localStorage.setItem(LL_NOMBRE, r.nombre);
+      registrar(lugar);
+    } catch (e) {
+      $('btn').disabled = false;
+      $('btn').textContent = 'Continuar';
+      $('extra').innerHTML = '<p style="color:var(--mal)">Sin conexión. Intenta otra vez.</p>';
+    }
+  };
 }
 
 /* ---------- Visitantes ---------- */
